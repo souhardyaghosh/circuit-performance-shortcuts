@@ -48,67 +48,80 @@ Plaintext
 
 Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   ├── circuit_leakage_study.py           # Complete execution pipeline script  ├── perform101.csv                     # Real dataset (Optional: place here)  ├── statistical_comparison_results.csv # Saved output table from statistical tests  └── figures/                           # Auto-generated visualization output directory      ├── figure2_original_dataset_leakage.png          ├── figure3_synthetic_correlation_matrix.png      ├── figure4_synthetic_leakage_scatter.png      └── figure5_shortcut_comparison.png   `
 
-🛠️ Installation & Setup
-------------------------
+## 🗂️ Directory Structure
 
-**1\. Clone the Repository**
+```text
+├── circuit_leakage_study.py           # Complete execution pipeline script
+├── perform101.csv                     # Real dataset (Optional: place here)
+├── statistical_comparison_results.csv # Saved output table from statistical tests
+└── figures/                           # Auto-generated visualization output directory
+    ├── figure2_original_dataset_leakage.png    
+    ├── figure3_synthetic_correlation_matrix.png
+    ├── figure4_synthetic_leakage_scatter.png
+    └── figure5_shortcut_comparison.png
+```
 
-Bash
+---
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   git clone https://github.com/YOUR_USERNAME/circuit-performance-leakage.git  cd circuit-performance-leakage   `
+## 🛠️ Installation & Setup
 
-**2\. Set Up a Virtual Environment (Highly Recommended)**
+**1. Clone the Repository**
+```bash
+git clone https://github.com/YOUR_USERNAME/circuit-performance-leakage.git
+cd circuit-performance-leakage
+```
 
-Bash
+**2. Set Up a Virtual Environment (Highly Recommended)**
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   python3 -m venv venv  source venv/bin/activate  # On Windows use: venv\Scripts\activate   `
-
-**3\. Install Requirements**
-
+**3. Install Requirements**
 Install all baseline dependencies, including gradient boosting frameworks and PyTorch:
-
-Bash
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   pip install --upgrade pip  pip install numpy pandas scipy scikit-learn xgboost catboost lightgbm torch matplotlib seaborn   `
-
+```bash
+pip install --upgrade pip
+pip install numpy pandas scipy scikit-learn xgboost catboost lightgbm torch matplotlib seaborn
+```
 > **Note on PyTorch & GPU:** The pipeline automatically leverages CUDA if available; otherwise, it defaults cleanly to standard CPU processing.
 
-🚀 Execution Guide
-------------------
+---
+
+## 🚀 Execution Guide
 
 Run the complete validation suite by executing the main script:
 
-Bash
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   python circuit_leakage_study.py   `
+```bash
+python circuit_leakage_study.py
+```
 
 ### Execution Steps & Logging
-
 During runtime, the execution output will log step-by-step progress:
+* Initializes random seeds and directory frameworks.
+* Inspects `perform101.csv` if present to extract baseline formula coefficients.
+* Synthesizes circuit records and validates the MCAR (Missing Completely at Random) assumption.
+* Splits datasets into $10$ distinct configurations to perform repeated statistical modeling.
+* Fits and evaluates all six learning frameworks across scenarios.
+* Outputs a markdown-compatible summary table with statistical metrics.
+* Populates the `figures/` directory with production-ready visualizations.
 
-*   Initializes random seeds and directory frameworks.
-    
-*   Inspects perform101.csv if present to extract baseline formula coefficients.
-    
-*   Synthesizes circuit records and validates the MCAR (Missing Completely at Random) assumption.
-    
-*   Splits datasets into $10$ distinct configurations to perform repeated statistical modeling.
-    
-*   Fits and evaluates all six learning frameworks across scenarios.
-    
-*   Outputs a markdown-compatible summary table with statistical metrics.
-    
-*   Populates the figures/ directory with production-ready visualizations.
-    
+---
 
-📊 Interpretive Metrics Guide
------------------------------
+## 📊 Interpretive Metrics Guide
 
 The terminal summary output generates several rigorous statistical indicators:
 
-**Statistical MetricInterpretation Guide**r2\_withBaseline $R^2$ score achieved when the shortcut feature is left in place.r2\_withoutTrue $R^2$ performance of the model once the shortcut feature is removed.abs\_dropStandard absolute difference; highly positive values show high leakage reliance.cohens\_dStandardized difference of means; $> 0.8$ is Large, $> 1.2$ is Very Large degradation.cliffs\_deltaRobust, non-parametric ordinal measure of reliance. Range is $\[-1.0, 1.0\]$.wilcoxon\_pSignificance test; value $< 0.05$ confirms the performance change is statistically significant.
+| Statistical Metric | Interpretation Guide |
+| :--- | :--- |
+| **`r2_with`** | Baseline $R^2$ score achieved when the shortcut feature is left in place. |
+| **`r2_without`** | True $R^2$ performance of the model once the shortcut feature is removed. |
+| **`abs_drop`** | Standard absolute difference; highly positive values show high leakage reliance. |
+| **`cohens_d`** | Standardized difference of means; $> 0.8$ is Large, $> 1.2$ is Very Large degradation. |
+| **`cliffs_delta`** | Robust, non-parametric ordinal measure of reliance. Range is $[-1.0, 1.0]$. |
+| **`wilcoxon_p`** | Significance test; value $< 0.05$ confirms the performance change is statistically significant. |
 
-📝 License
-----------
+---
+
+## 📝 License
 
 This project is open-source and licensed under the terms of the [MIT License](https://opensource.org/licenses/MIT).
