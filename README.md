@@ -41,13 +41,12 @@ By running $10$-fold repeated train-test experiments, this pipeline isolates the
 ```text
 ├── circuit_leakage_study.py           # Complete execution pipeline script
 ├── perform101.csv                     # Real dataset (Optional: place here)
-├── statistical_comparison_results.csv # Saved output table from statistical tests
 └── figures/                           # Auto-generated visualization output directory
     ├── figure1_flow.png
     ├── figure2_original_dataset_leakage.png    
     ├── figure3_synthetic_correlation_matrix.png
     ├── figure4_synthetic_leakage_scatter.png
-    └── figure5_shortcut_comparison.png  
+    ├── figure5_shortcut_comparison.png  
     ├── figure6_R2_drop.png
     ├── figure7_pred_vs_actual_FOM.png
     └── figure8_main_training_validation.png
