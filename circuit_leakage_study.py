@@ -1,11 +1,13 @@
 """
-Quantifying the Impact of Formula-Driven Dependencies in Circuit Performance Prediction.
-Complete analysis and figure generation pipeline.
+Quantifying the Impact of Data Leakage in ML Benchmarks for Circuit
+Performance Prediction -- Analysis and Figure Generation Pipeline
 
 Usage:
-    1. Ensure 'perform101.csv' is in the same directory (optional, script will fallback to synthetic data).
-    2. Install dependencies: pip install xgboost catboost lightgbm scipy torch scikit-learn matplotlib seaborn pandas numpy
-    3. Run: python circuit_leakage_study.py
+    1. Place perform101.csv (from https://github.com/zehao-dong/CktGNN
+       /OCB/CktBench101/) in the same folder as this script.
+    2. pip install xgboost catboost lightgbm scipy torch scikit-learn
+       matplotlib seaborn pandas numpy
+    3. python circuit_leakage_study.py
 """
 
 import os
@@ -48,21 +50,16 @@ except Exception:
     HAS_TORCH = False
     DEVICE = 'cpu'
 
-# --- Configuration ---
-N_REPEATS = 10  
-SEEDS = list(range(N_REPEATS))  
-DATA_SEED = 42  
-REPRESENTATIVE_SPLIT_SEED = SEEDS[0]  
-REAL_DATA_PATH = 'perform101.csv'  
+N_REPEATS = 10
+SEEDS = list(range(N_REPEATS))
+DATA_SEED = 42
+REPRESENTATIVE_SPLIT_SEED = SEEDS[0]
+REAL_DATA_PATH = 'perform101.csv'
 
-
-# =============================================================================
-# SECTION 1: Real Dataset Analysis
-# =============================================================================
 
 def analyze_real_cktgnn_dataset(path=REAL_DATA_PATH):
     if not os.path.exists(path):
-        print(f"[Warning] {path} not found. Skipping real-data validation.")
+        print(f"[real-data] {path} not found.")
         return None
 
     df = pd.read_csv(path)
@@ -71,13 +68,25 @@ def analyze_real_cktgnn_dataset(path=REAL_DATA_PATH):
     if 'valid' in df.columns:
         df = df.drop(columns=['valid'])
 
+    print(f"[real-data] Loaded perform101.csv: {df.shape[0]} circuits, columns={list(df.columns)}")
+
     corr_with_fom = df.corr()['fom'].drop('fom').sort_values(ascending=False)
-    
-    # Formula fit analysis
+    print("[real-data] Correlation with fom:")
+    for feat, c in corr_with_fom.items():
+        print(f"    {feat:<10}: r = {c:.6f}")
+
     X = df[['bw', 'pm', 'gain']]
     y = df['fom']
     lin = LinearRegression().fit(X, y)
     r2_formula = lin.score(X, y)
+    resid_std = (y - lin.predict(X)).std()
+
+    print(f"[real-data] Linear fit  fom ~ bw + pm + gain:")
+    print(f"    fom ~= {lin.coef_[0]:.4f}*bw + {lin.coef_[1]:.4f}*pm "
+          f"+ {lin.coef_[2]:.4f}*gain + {lin.intercept_:.4f}")
+    print(f"    R^2 = {r2_formula:.6f}  (residual std = {resid_std:.4f}, fom std = {y.std():.4f})")
+
+    print("\n[real-data] Running with/without-bw comparison on the REAL dataset.")
 
     results_real = {}
     for scenario, feat_cols in [('with_bw', ['gain', 'pm', 'bw']),
@@ -86,7 +95,6 @@ def analyze_real_cktgnn_dataset(path=REAL_DATA_PATH):
         ys = df['fom'].values
         results_real[scenario] = run_repeated_split_experiments(
             Xs, ys, feature_names=feat_cols, scenario_label=f"REAL-{scenario}")
-            
     return {
         'correlations': corr_with_fom,
         'formula_r2': r2_formula,
@@ -95,12 +103,8 @@ def analyze_real_cktgnn_dataset(path=REAL_DATA_PATH):
     }
 
 
-# =============================================================================
-# SECTION 2: Synthetic Dataset Generation
-# =============================================================================
-
 def create_synthetic_dataset(n_samples=10000, fom_weights=(0.7, 0.2, 0.1),
-                             missing_rate=0.02, seed=DATA_SEED):
+                              missing_rate=0.02, seed=DATA_SEED):
     assert abs(sum(fom_weights) - 1.0) < 1e-9, "fom_weights must sum to 1.0"
     rng = np.random.RandomState(seed)
 
@@ -144,28 +148,23 @@ def create_synthetic_dataset(n_samples=10000, fom_weights=(0.7, 0.2, 0.1),
     df['efficiency'] = df['fom'] / (df['total_power_mw'] + 1e-6)
     df['performance_per_area'] = df['fom'] / (df['area_um2'] + 1e-6)
 
-    # MCAR Missingness Injection
     mcar_cols = ['supply_voltage', 'temperature', 'capacitance_pf', 'resistance_ohm']
     for col in mcar_cols:
         mask = rng.rand(n) < missing_rate
         df.loc[mask, col] = np.nan
 
-    # Verification of MCAR assumption
     for col in mcar_cols:
         is_missing = df[col].isna().astype(int)
         if is_missing.sum() > 0:
             point_biserial = np.corrcoef(is_missing, df['fom'])[0, 1]
-            assert abs(point_biserial) < 0.05, f"MCAR violation detected in {col}"
+            assert abs(point_biserial) < 0.05, (
+                f"Missingness in {col} unexpectedly correlates with fom (r={point_biserial:.3f}).")
 
     return df
 
 
-# =============================================================================
-# SECTION 3: Preprocessing
-# =============================================================================
-
 def prepare_features(df, target_col='fom', exclude_features=None, skew_threshold=5.0,
-                     protect_from_transform=('bandwidth_mhz',)):
+                      protect_from_transform=('bandwidth_mhz',)):
     from scipy.stats import skew as _skew
     exclude_features = exclude_features or []
     exclude_cols = [target_col] + exclude_features
@@ -184,8 +183,7 @@ def prepare_features(df, target_col='fom', exclude_features=None, skew_threshold
             s = _skew(X[col].values)
             if np.isfinite(s) and s > skew_threshold:
                 lo, hi = X[col].quantile(0.005), X[col].quantile(0.995)
-                clipped = X[col].clip(lo, hi)
-                X[col] = np.log1p(clipped)
+                X[col] = np.log1p(X[col].clip(lo, hi))
 
     constant_cols = X.columns[X.var() < 1e-10]
     if len(constant_cols) > 0:
@@ -194,10 +192,6 @@ def prepare_features(df, target_col='fom', exclude_features=None, skew_threshold
     y = df[target_col].copy()
     return X, y
 
-
-# =============================================================================
-# SECTION 4: Models and Repeated Split Evaluation
-# =============================================================================
 
 MODEL_FACTORY = {
     'Linear Regression': lambda seed: LinearRegression(),
@@ -248,7 +242,7 @@ def train_eval_mlp(X_train, y_train, X_val, y_val, X_test, y_test, seed, epochs=
 
     train_loader = to_loader(X_train, y_train_s, True)
     val_loader = to_loader(X_val, y_val_s, False)
-    test_loader = to_loader(X_test, y_test, False)  
+    test_loader = to_loader(X_test, y_test, False)
 
     best_val, best_state, bad_epochs = float('inf'), None, 0
     for epoch in range(epochs):
@@ -285,7 +279,6 @@ def train_eval_mlp(X_train, y_train, X_val, y_val, X_test, y_test, seed, epochs=
             xb = xb.to(DEVICE)
             preds_s.extend(model(xb).cpu().numpy())
             actuals.extend(yb.numpy())
-            
     preds = y_scaler.inverse_transform(np.array(preds_s).reshape(-1, 1)).ravel()
     return preds, np.array(actuals)
 
@@ -323,23 +316,27 @@ def run_repeated_split_experiments(X, y, feature_names, scenario_label):
             per_model_metrics['MLP']['rmse'].append(np.sqrt(mean_squared_error(actual, pred)))
             per_model_metrics['MLP']['time'].append(dt)
 
+    print(f"  [{scenario_label}] ({N_REPEATS} repeated splits, features={feature_names})")
+    for name, m in per_model_metrics.items():
+        print(f"    {name:<18} R^2 = {np.mean(m['r2']):.4f} +/- {np.std(m['r2']):.4f}   "
+              f"MAE = {np.mean(m['mae']):.4f} +/- {np.std(m['mae']):.4f}   "
+              f"time/fit = {np.mean(m['time']):.2f}s"
+              + ("  [PyTorch/CUDA, not directly time-comparable]" if name == 'MLP' else ""))
     return per_model_metrics
 
-
-# =============================================================================
-# SECTION 5: Statistics
-# =============================================================================
 
 def cohens_d(a, b):
     a, b = np.asarray(a), np.asarray(b)
     pooled_std = np.sqrt((a.var(ddof=1) + b.var(ddof=1)) / 2)
     return (a.mean() - b.mean()) / pooled_std if pooled_std > 0 else 0.0
 
+
 def cliffs_delta(a, b):
     a, b = np.asarray(a), np.asarray(b)
     gt = sum(1 for x in a for y in b if x > y)
     lt = sum(1 for x in a for y in b if x < y)
     return (gt - lt) / (len(a) * len(b))
+
 
 def bootstrap_ci_diff(a, b, n_boot=5000, seed=0):
     rng = np.random.RandomState(seed)
@@ -348,43 +345,35 @@ def bootstrap_ci_diff(a, b, n_boot=5000, seed=0):
                        - rng.choice(b, len(b), replace=True).mean() for _ in range(n_boot)])
     return np.percentile(diffs, [2.5, 97.5])
 
+
 def compare_scenarios(results_with, results_without, label=""):
+    print(f"\n[stats] Shortcut-feature-impact comparison: {label}")
     rows = []
     for name in results_with:
         if name not in results_without:
             continue
-        a = np.array(results_with[name]['r2']) 
-        b = np.array(results_without[name]['r2']) 
+        a = np.array(results_with[name]['r2'])
+        b = np.array(results_without[name]['r2'])
         try:
             stat, p = stats.wilcoxon(a - b)
         except ValueError:
             stat, p = np.nan, np.nan
-            
         d = cohens_d(a, b)
         delta = cliffs_delta(a, b)
         ci = bootstrap_ci_diff(a, b)
         rel_drop_pct = 100 * (a.mean() - b.mean()) / a.mean() if a.mean() != 0 else np.nan
-        
         rows.append({
-            'model': name, 
-            'r2_with_mean': a.mean(), 
-            'r2_with_std': a.std(),
-            'r2_without_mean': b.mean(), 
-            'r2_without_std': b.std(),
-            'abs_drop': a.mean() - b.mean(), 
-            'rel_drop_pct': rel_drop_pct,
-            'wilcoxon_p': p, 
-            'cohens_d': d, 
-            'cliffs_delta': delta,
-            'ci95_low': ci[0], 
-            'ci95_high': ci[1],
+            'model': name, 'r2_with_mean': a.mean(), 'r2_with_std': a.std(),
+            'r2_without_mean': b.mean(), 'r2_without_std': b.std(),
+            'abs_drop': a.mean() - b.mean(), 'rel_drop_pct': rel_drop_pct,
+            'wilcoxon_p': p, 'cohens_d': d, 'cliffs_delta': delta,
+            'ci95_low': ci[0], 'ci95_high': ci[1],
         })
+        print(f"  {name:<18} drop={a.mean()-b.mean():+.4f} ({rel_drop_pct:+.1f}%)  "
+              f"Wilcoxon p={p:.4f}  Cohen's d={d:.2f}  Cliff's delta={delta:.2f}  "
+              f"95% CI=[{ci[0]:.4f}, {ci[1]:.4f}]")
     return pd.DataFrame(rows)
 
-
-# =============================================================================
-# SECTION 6: Figure Generation
-# =============================================================================
 
 def _lazy_plotting_imports():
     import matplotlib
@@ -394,6 +383,7 @@ def _lazy_plotting_imports():
     sns.set_style('whitegrid')
     plt.rcParams['figure.dpi'] = 150
     return plt, sns
+
 
 def figure2_real_data(real_csv=REAL_DATA_PATH, outdir='figures'):
     plt, sns = _lazy_plotting_imports()
@@ -428,6 +418,7 @@ def figure2_real_data(real_csv=REAL_DATA_PATH, outdir='figures'):
     plt.savefig(f'{outdir}/figure2_original_dataset_leakage.png')
     plt.close()
 
+
 def figure3_4_synthetic(fom_weights=(0.7, 0.2, 0.1), outdir='figures'):
     plt, sns = _lazy_plotting_imports()
     df = create_synthetic_dataset(fom_weights=fom_weights, seed=DATA_SEED)
@@ -458,6 +449,7 @@ def figure3_4_synthetic(fom_weights=(0.7, 0.2, 0.1), outdir='figures'):
     plt.savefig(f'{outdir}/figure4_synthetic_leakage_scatter.png')
     plt.close()
 
+
 def _run_one_split(df, exclude_features, split_seed=REPRESENTATIVE_SPLIT_SEED):
     X, y = prepare_features(df, exclude_features=exclude_features)
     X, y = X.values.astype(float), y.values.astype(float)
@@ -479,6 +471,7 @@ def _run_one_split(df, exclude_features, split_seed=REPRESENTATIVE_SPLIT_SEED):
 
     return results
 
+
 def figures5_6_7(fom_weights=(0.7, 0.2, 0.1), outdir='figures'):
     plt, sns = _lazy_plotting_imports()
     df = create_synthetic_dataset(fom_weights=fom_weights, seed=DATA_SEED)
@@ -487,7 +480,7 @@ def figures5_6_7(fom_weights=(0.7, 0.2, 0.1), outdir='figures'):
 
     models = [m for m in res_with if m in res_without]
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(9, 5))
     x = np.arange(len(models))
     width = 0.35
     r2_with = [max(0, res_with[m]['r2']) for m in models]
@@ -496,79 +489,7 @@ def figures5_6_7(fom_weights=(0.7, 0.2, 0.1), outdir='figures'):
     b2 = ax.bar(x + width / 2, r2_without, width, label='Without shortcut feature', color='#3d5a80')
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=30, ha='right')
-    ax.set_ylabel('Test R²')
+    ax.set_ylabel('Test R\u00b2')
     ax.set_title(f'Model Performance With vs Without Shortcut Feature (split_seed={REPRESENTATIVE_SPLIT_SEED})')
     ax.legend()
-    
-    # Complete text layout printing to avoid truncation errors
-    for bars in (b1, b2):
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width() / 2, height + 0.01, 
-                    f'{height:.3f}', ha='center', va='bottom', fontsize=8)
-
-    plt.tight_layout()
-    os.makedirs(outdir, exist_ok=True)
-    plt.savefig(f'{outdir}/figure5_shortcut_comparison.png')
-    plt.close()
-
-
-# =============================================================================
-# MAIN EXECUTION ROUTINE
-# =============================================================================
-
-if __name__ == '__main__':
-    print("=" * 80)
-    print("STARTING CIRCUIT LEAKAGE STUDY PIPELINE")
-    print("=" * 80)
-    
-    outdir = 'figures'
-    os.makedirs(outdir, exist_ok=True)
-    
-    # 1. Real Dataset Verification
-    if os.path.exists(REAL_DATA_PATH):
-        print(f"\n[1/4] Found local real dataset at '{REAL_DATA_PATH}'. Analyzing...")
-        real_analysis = analyze_real_cktgnn_dataset(REAL_DATA_PATH)
-        if real_analysis:
-            print(f" -> Real Target Formula R²: {real_analysis['formula_r2']:.6f}")
-            print(" -> Estimated weights: ", real_analysis['formula_coefs'])
-            print(" -> Saving Figure 2 (Original Dataset Heatmap & Scatter)...")
-            figure2_real_data(REAL_DATA_PATH, outdir=outdir)
-    else:
-        print(f"\n[1/4] Real dataset '{REAL_DATA_PATH}' not detected. Skipping real-world checks.")
-
-    # 2. Synthetic Dataset Pipeline
-    print(f"\n[2/4] Generating Synthetic Dataset (n=10,000, Data Seed={DATA_SEED})...")
-    df_synthetic = create_synthetic_dataset(seed=DATA_SEED)
-    print(" -> Data successfully initialized.")
-    print(" -> Saving Figures 3 & 4 (Synthetic Correlations & Shortcut Scatter)...")
-    figure3_4_synthetic(outdir=outdir)
-    
-    # 3. Model Training & Comparison
-    print("\n[3/4] Preparing Features and Running Repeated Experiments (10 Splits)...")
-    X_with, y_with = prepare_features(df_synthetic, exclude_features=[])
-    X_without, y_without = prepare_features(df_synthetic, exclude_features=['bandwidth_mhz'])
-    
-    print(" -> Running models with shortcut feature...")
-    results_with = run_repeated_split_experiments(X_with, y_with, X_with.columns, "Synthetic-With")
-    
-    print(" -> Running models without shortcut feature...")
-    results_without = run_repeated_split_experiments(X_without, y_without, X_without.columns, "Synthetic-Without")
-    
-    # 4. Statistical Analysis Output
-    print("\n[4/4] Conducting Robust Statistical Signficance Comparison...")
-    comparison_stats = compare_scenarios(results_with, results_without)
-    
-    # Pretty print summary
-    print("\n" + "=" * 90)
-    print("                               EXPERIMENT RESULTS SUMMARY                                ")
-    print("=" * 90)
-    print(comparison_stats[['model', 'r2_with_mean', 'r2_without_mean', 'abs_drop', 'cohens_d', 'wilcoxon_p']].to_string(index=False))
-    print("=" * 90)
-    
-    # Generate Visual R2 Comparison Chart
-    print("\nSaving Figure 5 (Shortcut Comparison Bar Chart)...")
-    figures5_6_7(outdir=outdir)
-    
-    print(f"\n[SUCCESS] Pipeline executed completely! Visualizations saved in './{outdir}/'.")
-    print("=" * 80)
+    for bars
